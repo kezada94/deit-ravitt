@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 
 from timm.data import Mixup
-from timm.models import create_model
+from ravitt import create_model_wrapper
 from timm.loss import LabelSmoothingCrossEntropy, SoftTargetCrossEntropy
 from timm.scheduler import create_scheduler
 from timm.optim import create_optimizer
@@ -113,6 +113,10 @@ def get_args_parser():
     parser.add_argument('--ThreeAugment', action='store_true') #3augment
     
     parser.add_argument('--src', action='store_true') #simple random crop
+
+    parser.add_argument('--ravitt_t', type=float, default=0.0, help='Probability to use ravitt (see ravitt_mode) (default: 0.0)')
+    parser.add_argument('--ravitt_mode', default='none', type=str, choices=['none', 'interlaced', 'avg', 'choice'] ,
+                        help='How to apply ravitt to training')
     
     # * Random Erase params
     parser.add_argument('--reprob', type=float, default=0.25, metavar='PCT',
@@ -260,8 +264,10 @@ def main(args):
             label_smoothing=args.smoothing, num_classes=args.nb_classes)
 
     print(f"Creating model: {args.model}")
-    model = create_model(
+    model = create_model_wrapper(
         args.model,
+        ravitt_t = args.ravitt_t,
+        ravitt_mode = args.ravitt_mode,
         pretrained=False,
         num_classes=args.nb_classes,
         drop_rate=args.drop,
