@@ -114,8 +114,9 @@ def get_args_parser():
     
     parser.add_argument('--src', action='store_true') #simple random crop
 
+    # Ravitt params
     parser.add_argument('--ravitt_t', type=float, default=0.0, help='Probability to use ravitt (see ravitt_mode) (default: 0.0)')
-    parser.add_argument('--ravitt_mode', default='none', type=str, choices=['none', 'interlaced', 'avg', 'choice'] ,
+    parser.add_argument('--ravitt_mode', default='none', type=str, choices=['none', 'interlaced', 'avg', 'choice', 'full'] ,
                         help='How to apply ravitt to training')
     
     # * Random Erase params

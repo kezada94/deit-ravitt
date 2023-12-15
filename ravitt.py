@@ -138,6 +138,9 @@ def new_forward(self, x):
 
 def create_model_wrapper(path, ravitt_t=0.0, ravitt_mode='none', **kwargs):
     model =  create_model(path, **kwargs)
+    if ravitt_mode == 'none':
+        return model
+
     model.ravitt = RaViTTPatchEmbedding(model.patch_embed.proj, model.patch_embed.norm, patch_size=16, img_size=224)
     t = ravitt_t
     model.t = t
@@ -147,7 +150,9 @@ def create_model_wrapper(path, ravitt_t=0.0, ravitt_mode='none', **kwargs):
         model.ravitt_func = lambda x, x_rv: x*(1-t) + x_rv*t
     elif ravitt_mode == 'choice':
         model.ravitt_func = lambda x, x_rv: x_rv if torch.rand(1) < t else x
+    elif ravitt_mode == 'full':
+        model.ravitt_func = lambda x, x_rv: x_rv
     else:
-        model.ravitt_func = lambda x, x_rv: x
+        raise ValueError(f'Unknown ravitt mode {ravitt_mode}')
     model.forward = new_forward.__get__(model, VisionTransformer)
     return model
