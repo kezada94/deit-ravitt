@@ -7,13 +7,17 @@ from einops.layers.torch import Rearrange
 from einops.layers.torch import Rearrange
 
 class RaViTTPatchEmbedding(nn.Module):
-    def __init__(self, proj: nn.Module, norm: nn.Module, patch_size: int = 16, img_size: int = 224):
+    def __init__(self, proj: nn.Module, norm: nn.Module, patch_size: int = 16, img_size: int = 224, isFull: bool = False, npatches: int = 192):
         super().__init__()
         self.patch_size = patch_size
         self.img_size = img_size
         self.proj = proj
         self.norm = norm
+        self.isFull = isFull
+        self.npatches = npatches
         self.rearr = Rearrange('b (lh lw) c ph pw -> b c (lh ph) (lw pw)', lh=(img_size//patch_size), lw=(img_size//patch_size), ph=patch_size, pw=patch_size)
+        if isFull:
+            self.rearr = Rearrange('b (lh lw) c ph pw -> b c (lh ph) (lw pw)', lh=1, lw=npatches, ph=patch_size, pw=patch_size)
         #base_grid0 = torch.arange(0, crop_size, device=input_batch.device).view(1, 1, -1).repeat(npatches, crop_size, 1)
         #base_grid1 = torch.arange(0, crop_size, device=input_batch.device).view(1, -1, 1).repeat(npatches, 1, crop_size)
 
@@ -83,7 +87,10 @@ class RaViTTPatchEmbedding(nn.Module):
         return self.rearr(x), pos
 
     def forward(self, x):
-        x, pos = self.ramdomizedPatchExtraction(x, patch_size=self.patch_size, npatches=(self.img_size//self.patch_size)**2)
+        if self.isFull:
+            x, pos = self.ramdomizedPatchExtraction(x, patch_size=self.patch_size, npatches=self.npatches)
+        else:
+            x, pos = self.ramdomizedPatchExtraction(x, patch_size=self.patch_size, npatches=(self.img_size//self.patch_size)**2)
         x = self.proj(x.to())
         x = x.flatten(2).transpose(1, 2)  # NCHW -> NLC
         x = self.norm(x)
@@ -140,8 +147,10 @@ def create_model_wrapper(path, ravitt_t=0.0, ravitt_mode='none', **kwargs):
     model =  create_model(path, **kwargs)
     if ravitt_mode == 'none':
         return model
-
-    model.ravitt = RaViTTPatchEmbedding(model.patch_embed.proj, model.patch_embed.norm, patch_size=16, img_size=224)
+    if ravitt_mode == 'full':
+        model.ravitt = RaViTTPatchEmbedding(model.patch_embed.proj, model.patch_embed.norm, patch_size=16, img_size=224, isFull=True, npatches=int(((224//16)**2)*ravitt_t))
+    else:  
+        model.ravitt = RaViTTPatchEmbedding(model.patch_embed.proj, model.patch_embed.norm, patch_size=16, img_size=224)
     t = ravitt_t
     model.t = t
     if ravitt_mode == 'interlaced':
