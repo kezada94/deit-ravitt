@@ -115,6 +115,7 @@ def get_args_parser():
     parser.add_argument('--src', action='store_true') #simple random crop
 
     # Ravitt params
+    parser.add_argument('--ravitt_k', type=int, default=1, help='Evaluation\'s output samples for the ensemble (default: 1)')
     parser.add_argument('--ravitt_t', type=float, default=0.0, help='Probability to use ravitt (see ravitt_mode) (default: 0.0)')
     parser.add_argument('--ravitt_mode', default='none', type=str, choices=['none', 'interlaced', 'avg', 'choice', 'full'] ,
                         help='How to apply ravitt to training')
@@ -417,7 +418,7 @@ def main(args):
                 loss_scaler.load_state_dict(checkpoint['scaler'])
         lr_scheduler.step(args.start_epoch)
     if args.eval:
-        test_stats = evaluate(data_loader_val, model, device)
+        test_stats = evaluate(data_loader_val, model, device, K=args.ravitt_k)
         print(f"Accuracy of the network on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%")
         return
 
@@ -451,7 +452,7 @@ def main(args):
                 }, checkpoint_path)
              
 
-        test_stats = evaluate(data_loader_val, model, device)
+        test_stats = evaluate(data_loader_val, model, device, K=args.ravitt_k)
         print(f"Accuracy of the network on the {len(dataset_val)} test images: {test_stats['acc1']:.1f}%")
         
         if max_accuracy < test_stats["acc1"]:

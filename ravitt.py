@@ -32,15 +32,15 @@ class RaViTTPatchEmbedding(nn.Module):
             npatches_h = int(sqrt_p)
             npatches_w = npatches_h
         else:
-            npatches_h = (patches//2)
-            npatches_w = 2
+            npatches_w = (patches)
+            npatches_h = 1
         pe = torch.zeros(batch_size, npatches_h, npatches_w, embedded_dim, device=dev)
 
         # Each dimension use half of embedded_dim
         d_embed = embedded_dim
         embedded_dim = d_embed // 2
 
-        den = (10000 ** (2 * torch.arange(0, embedded_dim//2, device=dev) / d_embed)).repeat(batch_size, 1,1,1)
+        den = (10000 ** (4 * torch.arange(0, embedded_dim//2, device=dev) / d_embed)).repeat(batch_size, 1,1,1)
 
         pos_h = positions[:, :, 0].reshape(batch_size, npatches_h, npatches_w).unsqueeze(-1).repeat(1,1,1,embedded_dim//2)
         pos_w = positions[:, :, 1].reshape(batch_size, npatches_h, npatches_w).unsqueeze(-1).repeat(1,1,1,embedded_dim//2)
@@ -49,6 +49,9 @@ class RaViTTPatchEmbedding(nn.Module):
         pe[:, :, :, 1:embedded_dim:2] = torch.cos(pos_h / den)
         pe[:, :, :, embedded_dim::2] = torch.sin(pos_w /  den)
         pe[:, :, :, embedded_dim + 1::2] = torch.cos(pos_w / den)
+        pe = (pe - pe.mean()) / pe.std() * 0.02
+
+
 
         return pe.reshape(batch_size, patches, d_embed)
 
@@ -60,8 +63,8 @@ class RaViTTPatchEmbedding(nn.Module):
         # Generate random crop coordinates for each image in the batch
         crop_top = torch.randint(0, height - crop_size + 1, (npatches,), device=input_batch.device)
         crop_left = torch.randint(0, width - crop_size + 1, (npatches,), device=input_batch.device)
-        #crop_top = torch.arange(n).unsqueeze(1).repeat(1,n).view(-1)*crop_size
-        #crop_left = torch.arange(n).repeat(n)*crop_size
+        #crop_top = torch.arange(n, device=input_batch.device).unsqueeze(1).repeat(1,n).view(-1)*crop_size
+        #crop_left = torch.arange(n, device=input_batch.device).repeat(n)*crop_size
         # Create a grid of coordinates for each image in the batch
         grid = torch.zeros((npatches, crop_size, crop_size, 2), device=input_batch.device)
         grid[:, :, :, 0] = torch.arange(0, crop_size, device=input_batch.device).view(1, 1, -1).repeat(npatches, crop_size, 1)
@@ -105,25 +108,12 @@ def interlaced(x, x_rv, t):
     mask = torch.rand((x.shape[1],), device=x.device) < t
     mask = mask.to(x.dtype).unsqueeze(0).unsqueeze(2).expand(x.shape[0], -1, -1)
     return x_rv * mask +  x*(1-mask)
-class VisionTransformerRaViTTWrapper(VisionTransformer):
-    def __init__(self, model, ravitt_mode:str = 'interlaced', t:float = 0.0):
-        super().__init__()
-        self.ravitt = RaViTTPatchEmbedding(model.patch_embed.proj, model.patch_embed.norm, patch_size=16, img_size=224)
-        self.t = t
-        if ravitt_mode == 'interlaced':
-            self.ravitt_func = lambda x, x_rv: interlaced(x, x_rv)
-        elif ravitt_mode == 'avg':
-            self.ravitt_func = lambda x, x_rv: x*(1-t) + x_rv*t
-        elif ravitt_mode == 'choice':
-            self.ravitt_func = lambda x, x_rv: x_rv if torch.rand(1) < t else x
-        else:
-            self.ravitt_func = lambda x, x_rv: x
 
 def new_forward(self, x):
 	x_og = self.patch_embed(x) #embed vit
 	x_og = self._pos_embed(x_og) #add positional encoding vit
 
-	if self.training:
+	if self.training or self.isFull:
 		x_rv, pos = self.ravitt(x) #embed ravitt
 		x_rv = x_rv + self.ravitt.overlap_positional_encoding(x_rv.shape[0], x_rv.shape[1], x_rv.shape[2], pos) #add positional encoding ravitt
 		slice_to_append = x_og[:, 0, :].unsqueeze(1)  # Shape will be (256, 1, 128)
@@ -132,7 +122,6 @@ def new_forward(self, x):
 		x = self.ravitt_func(x_og, x_rv)
 	else:
 		x = x_og
-
 
 	x = self.norm_pre(x)
 	if self.grad_checkpointing and not torch.jit.is_scripting():
@@ -148,9 +137,13 @@ def create_model_wrapper(path, ravitt_t=0.0, ravitt_mode='none', **kwargs):
     if ravitt_mode == 'none':
         return model
     if ravitt_mode == 'full':
-        model.ravitt = RaViTTPatchEmbedding(model.patch_embed.proj, model.patch_embed.norm, patch_size=16, img_size=224, isFull=True, npatches=int(((224//16)**2)*ravitt_t))
+        npatch = round(((224//16)**2)*ravitt_t)
+        print(f'Using {npatch} patches')
+        model.ravitt = RaViTTPatchEmbedding(model.patch_embed.proj, model.patch_embed.norm, patch_size=16, img_size=224, isFull=True, npatches=npatch)
+        model.isFull = True
     else:  
         model.ravitt = RaViTTPatchEmbedding(model.patch_embed.proj, model.patch_embed.norm, patch_size=16, img_size=224)
+        model.isFull = False
     t = ravitt_t
     model.t = t
     if ravitt_mode == 'interlaced':
