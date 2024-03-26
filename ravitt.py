@@ -26,10 +26,10 @@ class RaViTTPatchEmbedding(nn.Module):
         if embedded_dim % 4 != 0:
             raise ValueError("Cannot use sin/cos positional encoding with "
                             "odd dimension (got dim={:d})".format(embedded_dim))
-        sqrt_p = patches**0.5
+        sqrt_p = torch.sqrt(torch.tensor([patches]))
         dev = positions.device
-        if (sqrt_p).is_integer():
-            npatches_h = int(sqrt_p)
+        if (sqrt_p.floor() ** 2 == patches):
+            npatches_h = int(sqrt_p.item())
             npatches_w = npatches_h
         else:
             npatches_w = (patches)

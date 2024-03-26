@@ -104,6 +104,7 @@ def evaluate(data_loader, model, device, K=1):  # Add a parameter K with a defau
 
         # Average K output samples
         output = torch.stack(outputs_list).mean(dim=0)
+        #output = torch.stack(outputs_list).sum(dim=0)
 
         loss = criterion(output, target)
 

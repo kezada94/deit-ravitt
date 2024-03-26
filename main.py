@@ -27,6 +27,11 @@ import models
 import models_v2
 
 import utils
+from fvcore.nn import FlopCountAnalysis
+from thop import profile
+from ptflops import get_model_complexity_info
+
+
 
 
 def get_args_parser():
@@ -98,6 +103,7 @@ def get_args_parser():
     parser.add_argument('--aa', type=str, default='rand-m9-mstd0.5-inc1', metavar='NAME',
                         help='Use AutoAugment policy. "v0" or "original". " + \
                              "(default: rand-m9-mstd0.5-inc1)'),
+    parser.add_argument('--classic', type=str, default='yes', help='use classic flip augmentation')
     parser.add_argument('--smoothing', type=float, default=0.1, help='Label smoothing (default: 0.1)')
     parser.add_argument('--train-interpolation', type=str, default='bicubic',
                         help='Training interpolation (random, bilinear, bicubic default: "bicubic")')
@@ -162,7 +168,7 @@ def get_args_parser():
     # Dataset parameters
     parser.add_argument('--data-path', default='/datasets01/imagenet_full_size/061417/', type=str,
                         help='dataset path')
-    parser.add_argument('--data-set', default='IMNET', choices=['CIFAR', 'IMNET', 'INAT', 'INAT19'],
+    parser.add_argument('--data-set', default='IMNET', choices=['CIFAR', 'IMNET', 'INAT', 'INAT19', 'GCANCER', 'HER2-4'],
                         type=str, help='Image Net dataset path')
     parser.add_argument('--inat-category', default='name',
                         choices=['kingdom', 'phylum', 'class', 'order', 'supercategory', 'family', 'genus', 'name'],
@@ -178,8 +184,14 @@ def get_args_parser():
                         help='start epoch')
     parser.add_argument('--eval', action='store_true', help='Perform evaluation only')
     parser.add_argument('--eval-crop-ratio', default=0.875, type=float, help="Crop ratio for evaluation")
+
+
+    parser.add_argument('--eval-drop-mode', default='none', type=str, choices=['none', 'pixel', 'patch'], help="Drop mode for evaluation")
+    parser.add_argument('--eval-drop-ratio', default=0.0, type=float, help="Drop ratio for evaluation")
+
+
     parser.add_argument('--dist-eval', action='store_true', default=False, help='Enabling distributed evaluation')
-    parser.add_argument('--num_workers', default=10, type=int)
+    parser.add_argument('--num_workers', default=8, type=int)
     parser.add_argument('--pin-mem', action='store_true',
                         help='Pin CPU memory in DataLoader for more efficient (sometimes) transfer to GPU.')
     parser.add_argument('--no-pin-mem', action='store_false', dest='pin_mem',
@@ -399,6 +411,24 @@ def main(args):
     criterion = DistillationLoss(
         criterion, teacher_model, args.distillation_type, args.distillation_alpha, args.distillation_tau
     )
+
+    #dummy_input = torch.randn(1, 3, 224, 224, device=device)
+
+    #macs, params = get_model_complexity_info(model, (3, 224, 224), as_strings=True,
+    #                                           print_per_layer_stat=True, verbose=True)
+    #print('{:<30}  {:<8}'.format('Computational complexity: ', macs))
+    #print('{:<30}  {:<8}'.format('Number of parameters: ', params))
+
+    #exit()
+
+    #flops, params = profile(model, inputs=(dummy_input,), verbose=True)
+    #print(f"Model FLOPs: {flops}")
+
+    #flops = FlopCountAnalysis(model, dummy_input)
+    #total_flops = flops.total()  # Get total FLOPs
+    #print(f"Total FLOPs: {total_flops}")
+    #exit()
+
 
     output_dir = Path(args.output_dir)
     if args.resume:
